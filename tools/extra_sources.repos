@@ -1,0 +1,24 @@
+# autoware.repos に含まれず apt（ros-humble-*）で入るメッセージパッケージ。
+# 定義パック作成時に fetch_sources.py --repos tools/extra_sources.repos で追加取得する。
+# バージョンは Humble の apt パッケージと同じものを指定する。
+repositories:
+  extra/geographic_info:   # geographic_msgs（tier4_api_msgs/AwapiVehicleStatus が参照）
+    type: git
+    url: https://github.com/ros-geographic-info/geographic_info.git
+    version: 1.0.6
+  extra/ros_canopen:       # can_msgs（ros2_socketcan, g30esli_interface）
+    type: git
+    url: https://github.com/ros-industrial/ros_canopen.git
+    version: dashing-devel
+  extra/ublox:             # ublox_msgs（gnss_poser）
+    type: git
+    url: https://github.com/KumarRobotics/ublox.git
+    version: 2.3.0
+  extra/navigation_msgs:   # map_msgs
+    type: git
+    url: https://github.com/ros-planning/navigation_msgs.git
+    version: humble
+  extra/grid_map:          # grid_map_msgs
+    type: git
+    url: https://github.com/ANYbotics/grid_map.git
+    version: humble

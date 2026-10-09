@@ -48,7 +48,16 @@ git -C work\pilot-auto checkout <タグ or コミット>
 python tools\fetch_sources.py --repos work\pilot-auto\autoware.repos --out work\src
 ```
 
+- 続けて、apt で入るため autoware.repos に無いメッセージパッケージ（geographic_msgs, can_msgs, ublox_msgs,
+  map_msgs, grid_map_msgs）を取得します。
+
+  ```bat
+  python tools\fetch_sources.py --repos tools\extra_sources.repos --out work\src
+  ```
+
 - SSH 鍵を使わない場合は `--https` を付けます（https でのアクセス権が必要です）。
+- launch / パラメータ / 車両 description 系のリポジトリ（autoware_launch.x1.eve, individual_params, *_params.eve,
+  ymc_golfcart_*_description など）はメッセージを含まないため、取得に失敗しても問題ありません。
 - 時間を短くしたい場合は、`--only msgs universe autoware/common g30esli` のようにメッセージを含むリポジトリに絞れます。
 
 ### 2.3 定義パックの作成
@@ -73,6 +82,9 @@ python tools\build_msgdefs.py build --src work\src --out msgdefs\msgdefs_<バー
 ```bat
 python tools\build_msgdefs.py check --pack msgdefs\msgdefs_<バージョン>.json --bag <bag フォルダ>
 ```
+
+あわせて、ソースコードが include しているメッセージ型が全て定義パックに含まれるかも確認すると確実です
+（Claude に「ソース中の `#include <pkg/msg/xxx.hpp>` と定義パックを突き合わせて」と依頼してください）。
 
 その後、bag2mcap で変換し、Lichtblick で主要トピック（点群、車速、診断、自己位置など）が表示されることを確認します。
 

@@ -27,11 +27,11 @@ STORES = {"humble": Stores.ROS2_HUMBLE, "jazzy": Stores.ROS2_JAZZY}
 SKIP_DIRS = {".git", "build", "install", "log", "test", "tests"}
 
 
-def find_package_name(path: Path, cache: dict[Path, str | None]) -> str | None:
-    """path を含む ROS パッケージ名（package.xml の <name>）を返す。"""
+def find_package(path: Path, cache: dict[Path, str]) -> tuple[str, Path] | None:
+    """path を含む ROS パッケージの (名前, ルートフォルダ) を返す。名前は package.xml の <name>。"""
     for d in path.parents:
         if d in cache:
-            return cache[d]
+            return cache[d], d
         pxml = d / "package.xml"
         if pxml.is_file():
             try:
@@ -39,28 +39,35 @@ def find_package_name(path: Path, cache: dict[Path, str | None]) -> str | None:
             except ET.ParseError:
                 name = None
             cache[d] = (name or d.name).strip()
-            return cache[d]
+            return cache[d], d
     return None
 
 
 def collect_sources(src_dirs: list[Path]) -> tuple[list[tuple[Path, str]], list[str]]:
-    """msg ディレクトリ直下の .msg / .idl を集める。(ファイル, パッケージ名) のリスト。"""
+    """パッケージの msg フォルダ以下（サブフォルダを含む）の .msg / .idl を集める。
+
+    rosidl は msg/object_recognition/Foo.msg のようなサブフォルダ内のファイルも
+    pkg/msg/Foo として生成するため、サブフォルダも対象にする。
+    """
     found: list[tuple[Path, str]] = []
     warnings: list[str] = []
-    cache: dict[Path, str | None] = {}
+    cache: dict[Path, str] = {}
     for src in src_dirs:
         for p in sorted(src.rglob("*")):
             if p.suffix not in (".msg", ".idl") or not p.is_file():
                 continue
             if any(part in SKIP_DIRS for part in p.relative_to(src).parts[:-1]):
                 continue
-            if p.parent.name != "msg":
-                continue  # srv / action や IDL 生成物などは対象外
-            pkg = find_package_name(p, cache)
+            if "msg" not in p.relative_to(src).parts[:-1]:
+                continue
+            pkg = find_package(p, cache)
             if pkg is None:
                 warnings.append(f"package.xml が見つからないためスキップ: {p}")
                 continue
-            found.append((p, pkg))
+            name, root = pkg
+            if p.relative_to(root).parts[0] != "msg":
+                continue  # srv / action、ビルド生成物などは対象外
+            found.append((p, name))
     return found, warnings
 
 

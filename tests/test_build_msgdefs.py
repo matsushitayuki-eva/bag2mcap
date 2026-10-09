@@ -37,3 +37,22 @@ def test_missing_dependency_is_reported(tmp_path):
 
     types = json.loads(out.read_text(encoding="utf-8"))["types"]
     assert "x_msgs/msg/B" in types and "x_msgs/msg/A" not in types
+
+
+def test_msg_in_subfolder(tmp_path):
+    """msg/object_recognition/Foo.msg のようなサブフォルダ内の定義も pkg/msg/Foo として集める。"""
+    pkg = tmp_path / "repo" / "y_msgs"
+    (pkg / "msg" / "object_recognition").mkdir(parents=True)
+    (pkg / "srv").mkdir()
+    (pkg / "package.xml").write_text("<package><name>y_msgs</name></package>")
+    (pkg / "msg" / "object_recognition" / "Feature.msg").write_text("int32 v\n")
+    (pkg / "msg" / "Top.msg").write_text("y_msgs/Feature f\n")
+    (pkg / "srv" / "S.msg").write_text("int32 ignored\n")
+    files, _ = b.collect_sources([tmp_path])
+    assert sorted(p.name for p, _ in files) == ["Feature.msg", "Top.msg"]
+    out = tmp_path / "p.json"
+    assert b.main(["build", "--src", str(tmp_path), "--out", str(out), "--ref", "r", "--strict"]) == 0
+    import json
+
+    types = json.loads(out.read_text(encoding="utf-8"))["types"]
+    assert "MSG: y_msgs/Feature" in types["y_msgs/msg/Top"]["definition"]
