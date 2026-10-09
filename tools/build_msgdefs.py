@@ -204,7 +204,11 @@ def build_pack(args: argparse.Namespace) -> int:
         try:
             definition, _ = store.generate_msgdef(name, ros_version=2)
         except Exception as e:  # noqa: BLE001
-            errors.append(f"定義の生成に失敗（依存型が見つからない可能性）: {name}: {e}")
+            if "wstring" in str(e):
+                # rosbags は wstring 未対応。wstring を使う型はテスト・サンプル用のみのため警告にとどめる
+                warnings.append(f"wstring を含むため除外: {name}")
+            else:
+                errors.append(f"定義の生成に失敗（依存型が見つからない可能性）: {name}: {e}")
             continue
         out_types[name] = {"encoding": "ros2msg", "definition": definition}
 
@@ -243,14 +247,15 @@ def build_pack(args: argparse.Namespace) -> int:
     return 1 if errors and args.strict else 0
 
 
-def check_bag_types(args: argparse.Namespace) -> int:
-    """bag（metadata.yaml / db3）の型が定義パックに全て含まれるか確認する。"""
+def _bag_types(path: Path) -> set[str]:
+    """bag フォルダ / db3 / metadata.yaml 単体から記録されている型を集める。"""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
     from bag2mcap.bagreader import Db3File, open_bag  # noqa: PLC0415
-    from bag2mcap.msgdefs import load_pack  # noqa: PLC0415
 
-    pack = load_pack(args.pack)
-    bag = open_bag(args.bag)
+    if path.is_file() and path.suffix in (".yaml", ".yml"):
+        # metadata.yaml だけでも確認できる（bag 本体を送れない場合用）
+        return set(re.findall(r"type:\s*(\S+/msg/\S+)", path.read_text(encoding="utf-8")))
+    bag = open_bag(path)
     types: set[str] = set()
     for bf in bag.files:
         if bf.compressed:
@@ -260,10 +265,68 @@ def check_bag_types(args: argparse.Namespace) -> int:
         db.close()
     if bag.metadata_text:
         types |= set(re.findall(r"type:\s*(\S+/msg/\S+)", bag.metadata_text))
+    return types
+
+
+def check_bag_types(args: argparse.Namespace) -> int:
+    """bag（フォルダ / db3 / metadata.yaml）の型が定義パックに全て含まれるか確認する。"""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from bag2mcap.msgdefs import load_pack  # noqa: PLC0415
+
+    pack = load_pack(args.pack)
+    types: set[str] = set()
+    for b in args.bag:
+        types |= _bag_types(Path(b))
     missing = sorted(t for t in types if pack.get(t) is None)
     print(f"bag 内の型: {len(types)} / 定義パックに無い型: {len(missing)}")
     for t in missing:
         print(f"  - {t}")
+    return 1 if missing else 0
+
+
+_CPP_INCLUDE = re.compile(r'#include\s*[<"](\w+)/msg/\w+\.hpp')
+_PY_IMPORT = re.compile(r"^\s*(?:from|import)\s+(\w+)\.msg\b", re.M)
+_PKG_DEP = re.compile(r"<(?:depend|exec_depend|build_depend|run_depend)>\s*(\w+_(?:msgs|interfaces))\s*</")
+
+
+def audit_sources(args: argparse.Namespace) -> int:
+    """ソースが参照しているメッセージパッケージのうち、定義パックに 1 つも型が無いものを列挙する。
+
+    C++ の include、Python の import、package.xml の *_msgs / *_interfaces 依存を調べる。
+    apt で入るノード（rosbridge_server など）が内部で使う型は検出できないため、
+    最終確認は check（実際の bag / metadata.yaml）で行うこと。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from bag2mcap.msgdefs import load_pack  # noqa: PLC0415
+
+    pack = load_pack(args.pack)
+    have = {name.split("/")[0] for name in pack.types}
+    refs: dict[str, set[str]] = {}
+    for src in args.src:
+        for p in Path(src).rglob("*"):
+            if not p.is_file() or ".git" in p.parts or p.suffix not in (".hpp", ".cpp", ".h", ".py", ".xml"):
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace")
+            pats = (_PKG_DEP,) if p.name == "package.xml" else (_CPP_INCLUDE, _PY_IMPORT)
+            for pat in pats:
+                for pkg in pat.findall(text):
+                    refs.setdefault(pkg, set()).add(str(p.relative_to(src)))
+    # メッセージを持たない（srv / action のみの）パッケージは対象外
+    srv_only: set[str] = set()
+    cache: dict[Path, str] = {}
+    for src in args.src:
+        for pxml in Path(src).rglob("package.xml"):
+            if ".git" in pxml.parts:
+                continue
+            found = find_package(pxml.parent / "_", cache)
+            if found and not any((pxml.parent / "msg").rglob("*.msg")) and not any((pxml.parent / "msg").rglob("*.idl")):
+                srv_only.add(found[0])
+    ignore = set(args.ignore or []) | (srv_only - have)
+    missing = sorted(pkg for pkg in refs if pkg not in have and pkg not in ignore)
+    print(f"参照されているメッセージパッケージ: {len(refs)} / 定義パックに無いもの: {len(missing)}")
+    for pkg in missing:
+        where = sorted(refs[pkg])
+        print(f"  - {pkg}（{where[0]} ほか {len(where) - 1} 件）")
     return 1 if missing else 0
 
 
@@ -291,14 +354,21 @@ def main(argv: list[str] | None = None) -> int:
 
     c = sub.add_parser("check", help="bag 内の型が定義パックに全て含まれるか確認する")
     c.add_argument("--pack", required=True)
-    c.add_argument("--bag", required=True)
+    c.add_argument("--bag", required=True, action="append", help="bag フォルダ / db3 / metadata.yaml（複数指定可）")
+
+    a = sub.add_parser("audit", help="ソースが参照するメッセージパッケージが定義パックにあるか確認する")
+    a.add_argument("--pack", required=True)
+    a.add_argument("--src", action="append", required=True)
+    a.add_argument("--ignore", nargs="*", help="無視するパッケージ（テスト用など）")
 
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] not in ("build", "check", "-h", "--help"):
+    if argv and argv[0] not in ("build", "check", "audit", "-h", "--help"):
         argv.insert(0, "build")
     args = ap.parse_args(argv)
     if args.cmd == "check":
         return check_bag_types(args)
+    if args.cmd == "audit":
+        return audit_sources(args)
     return build_pack(args)
 
 

@@ -22,3 +22,15 @@ repositories:
     type: git
     url: https://github.com/ANYbotics/grid_map.git
     version: humble
+  extra/rosbridge_suite:   # rosbridge_msgs（web_controller が起動する rosbridge_server の /connected_clients など）
+    type: git
+    url: https://github.com/RobotWebTools/rosbridge_suite.git
+    version: humble
+  extra/pcl_msgs:          # pcl_msgs（pointcloud_preprocessor, occupancy_grid_map_outlier_filter）
+    type: git
+    url: https://github.com/ros-perception/pcl_msgs.git
+    version: ros2
+  extra/example_interfaces:  # example_interfaces（driving_log_replayer）
+    type: git
+    url: https://github.com/ros2/example_interfaces.git
+    version: humble

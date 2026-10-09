@@ -77,16 +77,31 @@ python tools\build_msgdefs.py build --src work\src --out msgdefs\msgdefs_<バー
 
 ### 2.4 確認
 
-実際の bag で、全ての型が定義パックに含まれているかを確認します（db3 を読むだけで、変換はしません）。
+確認は 2 段階で行います。
+
+**(1) ソースとの突き合わせ（audit）**：ソースが参照しているメッセージパッケージ（C++ の include、Python の import、
+package.xml の `*_msgs` / `*_interfaces` 依存）が定義パックにあるか確認します。srv / action しか持たないパッケージは自動で除外されます。
 
 ```bat
-python tools\build_msgdefs.py check --pack msgdefs\msgdefs_<バージョン>.json --bag <bag フォルダ>
+python tools\build_msgdefs.py audit --pack msgdefs\msgdefs_<バージョン>.json --src work\src ^
+    --ignore test_msgs tf2_geometry_msgs tf2_sensor_msgs
 ```
 
-あわせて、ソースコードが include しているメッセージ型が全て定義パックに含まれるかも確認すると確実です
-（Claude に「ソース中の `#include <pkg/msg/xxx.hpp>` と定義パックを突き合わせて」と依頼してください）。
+不足が出たら、そのパッケージのソースを `tools\extra_sources.repos` に追加して作り直します。
+`autoware_adapi_v1_msgs` は driving_log_replayer（シミュレータ）だけが参照しており、実車の bag には現れないため対象外で構いません。
 
-その後、bag2mcap で変換し、Lichtblick で主要トピック（点群、車速、診断、自己位置など）が表示されることを確認します。
+**(2) 実際の bag との突き合わせ（check）** ← 最終確認
+apt で入るノードが内部で使う型（例：rosbridge_server の `/connected_clients` = `rosbridge_msgs/msg/ConnectedClients`）は
+ソースからは見つけられません。実車の bag に記録されている型と突き合わせて確認します。
+bag 本体が大きくて手元に無い場合は、**bag フォルダ内の `metadata.yaml`（数十 KB）だけ** で確認できます。
+
+```bat
+python tools\build_msgdefs.py check --pack msgdefs\msgdefs_<バージョン>.json --bag <bag フォルダ or metadata.yaml> [--bag ...]
+```
+
+その後、bag2mcap で変換し、Lichtblick で主要トピック（点群、車速、診断、自己位置など）が表示されること、
+Alerts に「Message encoding cdr with no encoding is not supported」が出ないことを確認します
+（このエラーは、そのトピックの型が定義パックに無いことを示します）。
 
 ### 2.5 配布
 

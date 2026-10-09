@@ -56,3 +56,27 @@ def test_msg_in_subfolder(tmp_path):
 
     types = json.loads(out.read_text(encoding="utf-8"))["types"]
     assert "MSG: y_msgs/Feature" in types["y_msgs/msg/Top"]["definition"]
+
+
+def test_audit_and_check_metadata_yaml(tmp_path, pack_path):
+    src = tmp_path / "src"
+    node = src / "my_node"
+    (node / "src").mkdir(parents=True)
+    (node / "package.xml").write_text(
+        "<package><name>my_node</name><depend>test_vehicle_msgs</depend><depend>missing_msgs</depend>"
+        "<depend>srv_only_msgs</depend></package>"
+    )
+    (node / "src" / "a.py").write_text("from other_msgs.msg import Foo\n")
+    srv = src / "srv_only_msgs"
+    (srv / "srv").mkdir(parents=True)
+    (srv / "package.xml").write_text("<package><name>srv_only_msgs</name></package>")
+    assert b.main(["audit", "--pack", str(pack_path), "--src", str(src)]) == 1
+
+    meta = tmp_path / "metadata.yaml"
+    meta.write_text(
+        "rosbag2_bagfile_information:\n  topics_with_message_count:\n"
+        "    - topic_metadata:\n        name: /a\n        type: test_vehicle_msgs/msg/VelocityReport\n"
+        "    - topic_metadata:\n        name: /b\n        type: rosbridge_msgs/msg/ConnectedClients\n",
+        encoding="utf-8",
+    )
+    assert b.main(["check", "--pack", str(pack_path), "--bag", str(meta)]) == 1
