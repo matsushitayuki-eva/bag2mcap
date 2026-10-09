@@ -13,7 +13,15 @@ from .converter import Compression, convert, log_path_for
 from .msgdefs import MsgDefsError, empty_pack, load_pack
 
 
+def _safe_stdio() -> None:
+    """出力先の文字コードで表せない文字（cp1252 へのリダイレクト時の日本語など）で落ちないようにする。"""
+    for s in (sys.stdout, sys.stderr):
+        if s is not None and hasattr(s, "reconfigure"):
+            s.reconfigure(errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _safe_stdio()
     ap = argparse.ArgumentParser(prog="bag2mcap", description="rosbag2 (.db3) を MCAP に変換します。")
     ap.add_argument("inputs", nargs="+", help="bag フォルダまたは .db3 ファイル（複数可）")
     ap.add_argument("-d", "--msgdefs", help="定義パック (msgdefs_*.json)")

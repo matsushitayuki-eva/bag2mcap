@@ -13,7 +13,7 @@ def _ensure_console() -> None:
             import ctypes
 
             if ctypes.windll.kernel32.AttachConsole(-1):
-                sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace")  # noqa: SIM115
+                sys.stdout = open("CONOUT$", "w", errors="replace")  # noqa: SIM115
                 sys.stderr = sys.stdout
                 return
         except Exception:  # noqa: BLE001
