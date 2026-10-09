@@ -209,7 +209,7 @@ def make_bag(typestore, tmp_path):
                     "files": [],
                 }
             }
-            (bag / "metadata.yaml").write_text(yaml.safe_dump(meta, allow_unicode=True))
+            (bag / "metadata.yaml").write_text(yaml.safe_dump(meta, allow_unicode=True), encoding="utf-8")
         return bag
 
     return _make
