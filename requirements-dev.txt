@@ -1,0 +1,7 @@
+-r requirements.txt
+# 定義パック作成・テスト・exe ビルド用
+rosbags==0.11.5
+mcap-ros2-support==0.5.7
+numpy
+pytest
+pyinstaller==6.22.3

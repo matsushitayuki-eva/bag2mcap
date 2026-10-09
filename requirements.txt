@@ -1,0 +1,6 @@
+# 実行に必要なライブラリ
+mcap==1.5.0
+zstandard==0.25.0
+lz4==4.4.5
+PyYAML==6.0.3
+tkinterdnd2==0.6.3

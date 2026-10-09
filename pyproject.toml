@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bag2mcap"
+dynamic = ["version"]
+description = "rosbag2 (.db3) を MCAP に変換する Windows 向け GUI ツール"
+requires-python = ">=3.10"
+dependencies = [
+    "mcap>=1.1",
+    "zstandard>=0.21",
+    "lz4>=4.0",
+    "PyYAML>=6.0",
+    "tkinterdnd2>=0.4",
+]
+
+[project.optional-dependencies]
+# 定義パック作成（管理者用）
+admin = ["rosbags>=0.10"]
+dev = ["rosbags>=0.10", "mcap-ros2-support>=0.5", "pytest>=7", "numpy", "pyinstaller>=6"]
+
+[project.scripts]
+bag2mcap = "bag2mcap.cli:main"
+
+[project.gui-scripts]
+bag2mcap-gui = "bag2mcap.gui:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "bag2mcap.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120

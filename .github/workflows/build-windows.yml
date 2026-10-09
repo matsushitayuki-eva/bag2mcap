@@ -1,0 +1,58 @@
+name: build-windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt && pip install -e .
+      - run: python -m pytest -q
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt && pip install -e .
+      - name: Build exe
+        run: >-
+          pyinstaller --noconfirm --clean --onedir --windowed --name bag2mcap
+          --collect-all tkinterdnd2 --paths src packaging/run_gui.py
+      - name: Smoke test (CLI mode of the built exe)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist/bag2mcap/bag2mcap.exe -ArgumentList "--version" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { exit 1 }
+          python tests/make_sample.py sample
+          $p = Start-Process -FilePath dist/bag2mcap/bag2mcap.exe -ArgumentList "-d sample/msgdefs_sample.json sample/sample_bag sample/sample_bag_msgzstd" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { exit 1 }
+          if (!(Test-Path sample/sample_bag.mcap)) { exit 1 }
+          Get-Content sample/sample_bag_bag2mcap_log.txt
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          Copy-Item -Recurse dist/bag2mcap pkg/bag2mcap
+          New-Item -ItemType Directory -Force pkg/bag2mcap/msgdefs | Out-Null
+          Copy-Item docs/USER_GUIDE.md pkg/bag2mcap/
+          Copy-Item msgdefs/README.md pkg/bag2mcap/msgdefs/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bag2mcap-windows
+          path: pkg/
